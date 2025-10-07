@@ -6,6 +6,7 @@ class SocketTCP:
         self.address_origin=None
         self.addres_destiny=None
         self.timeout=0.5
+        self.seq=0
         
     # recibe un string de estructura: SYN|||ACK|||FIN|||SEQ|||DATA
     @staticmethod
@@ -44,3 +45,25 @@ class SocketTCP:
             segment+= header['DATA']
 
         return segment
+    
+    
+
+    def close(self):
+        self.socket.sendto(self.create_segment({"SYN":False, "ACK":False, "FIN":True, "SEQ":self.seq, "DATA":None}).encode(), self.addres_destiny)
+        end_message = self.socket.recvfrom(16).decode()
+        end_header = self.parse_segment(end_message)
+        if end_header["FIN"] and end_header["ACK"] and (end_header["SEQ"] == self.seq+1):
+            self.seq += 1
+            self.socket.sendto(self.create_segment({"SYN":False, "ACK":True, "FIN":False, "SEQ":self.seq+1, "DATA":None}).encode(), self.addres_destiny)
+            self.socket.close()
+
+    def recv_close(self):
+        end_message, addr = self.socket.recvfrom(16).decode()
+        end_header = self.parse_segment(end_message)
+        if end_header["FIN"] and (end_header["SEQ"] == self.seq+1):
+            self.seq += 1
+            self.socket.sendto(self.create_segment({"SYN":False, "ACK":True, "FIN":True, "SEQ":self.seq+1, "DATA":None}).encode(), addr)
+            end_message, addr = self.socket.recvfrom(16).decode()
+            end_header = self.parse_segment(end_message)
+            if end_header["ACK"] and (end_header["SEQ"] == self.seq+1):
+                self.socket.close()
