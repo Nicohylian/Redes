@@ -5,8 +5,8 @@ if __name__ == "__main__":
     buff_size = 16
     address = ('localhost', 8000)
 
-    client_socket: SocketTCP = SocketTCP()
-    client_socket.addres_destiny = address
+    """client_socket: SocketTCP = SocketTCP()
+    client_socket.connect(address)
     
 
     while True:
@@ -14,6 +14,18 @@ if __name__ == "__main__":
         message = input_data
         for i in range(0, len(message), buff_size):
             chunk = "1|||0|||0|||"+str(i)+"|||"+message[i:i+buff_size]
-            client_socket.socket.sendto(chunk.encode(), address)
+            client_socket.socket.sendto(chunk.encode(), client_socket.address_destiny)
+            """
+    client_socketTCP = SocketTCP()
+    client_socketTCP.connect(address)
+    # test 1
+    message = "Mensje de len=16".encode()
+    client_socketTCP.send(message)
+    # test 2
+    message = "Mensaje de largo 19".encode()
+    client_socketTCP.send(message)
+    # test 3
+    message = "Mensaje de largo 19".encode()
+    client_socketTCP.send(message)
 
-        
+    client_socketTCP.close()
