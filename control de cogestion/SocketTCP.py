@@ -543,6 +543,10 @@ class SocketTCP:
                             tries -= 1
                             self.socket.settimeout(self.timeout)
                             self.socket.sendto(self.create_segment({"SYN":False, "ACK":True, "FIN":True, "SEQ":self.seq, "DATA":None}).encode(), addr, timer_index=0)
+                            if tries == 0:
+                                self.socket.close()
+                                print("conexion terminada por tiempo de espera acabado")
+                                return
                     end_header = self.parse_segment(end_message.decode())
                     if end_header["ACK"] and end_header["SEQ"] == self.seq+1:
                         self.socket.stop_timer(timer_index=0)

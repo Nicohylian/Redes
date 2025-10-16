@@ -88,7 +88,7 @@ class SocketTCP:
                 self.socket.sendto(syn_segment.encode(), address)
                 print("Reenviando mensaje: ", syn_segment)
 
-        
+        print("secuencia: ", self.seq)
         print("Conexion establecida con exito")
         return
 
@@ -131,6 +131,7 @@ class SocketTCP:
             ack_header = self.parse_segment(ack_msg.decode())
             if ack_header["ACK"] and ack_header["SEQ"]==self.seq + 1:
                 new_socket.seq +=1
+                print("secuencia: ", new_socket.seq)
                 print("conexion establecida con exito")
                 return new_socket, new_address
                 
@@ -163,8 +164,8 @@ class SocketTCP:
                     print("largo recivido ", length)
                     self.seq += len(segment["DATA"])         
                     break
-                elif response["ACK"] and response["SYN"] and response["SEQ"] == self.seq:
-                    ack_response = {"SYN":False, "ACK":True, "FIN":False, "SEQ":self.seq+1, "DATA":None}
+                elif response["ACK"] and response["SYN"] and response["SEQ"] == self.seq-1:
+                    ack_response = {"SYN":False, "ACK":True, "FIN":False, "SEQ":self.seq, "DATA":None}
                     self.socket.sendto(self.create_segment(ack_response).encode(), self.address_destiny)
                     print("Enviando mensaje: ", ack_response)
                
@@ -206,7 +207,7 @@ class SocketTCP:
                     msg, _ = self.socket.recvfrom(23+buff_size)
                     header = self.parse_segment(msg.decode())
                     if header["DATA"] is not None:
-                        if header["SEQ"] + len(header["DATA"]) > self.seq:
+                        if header["SEQ"] + len(header["DATA"]) > self.seq and self.seq == header["SEQ"]:
                             self.msg_left = int(header["DATA"])
                             self.seq += len(header["DATA"])
                             segment["SEQ"] = self.seq
@@ -236,13 +237,14 @@ class SocketTCP:
             print("Enviando mensaje: ", segment)
             print("mensaje recivido hasta ahora: ", full_msg)
             print("quedan por recibir: ", self.msg_left)
+            self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny)
             if len(full_msg) == buff_size:
                 if self.msg_left != 0:
                     self.msg_buff = [self.msg_buff[0][buff_size:]]
                 else:
                     self.msg_buff = []
                 return full_msg.encode()
-            self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny)
+            
             self.msg_buff = []
         while self.msg_left > 0:
             try:
@@ -250,7 +252,7 @@ class SocketTCP:
                 header = self.parse_segment(msg.decode())
                 print("dato recibido: ", header)
                 if header["DATA"] is not None:
-                    if header["SEQ"] + len(header["DATA"]) > self.seq:
+                    if header["SEQ"] + len(header["DATA"]) > self.seq and self.seq == header["SEQ"]:
                         full_msg += header["DATA"][:buff_size]
                         self.msg_left -= len(header["DATA"][:buff_size])
                         self.seq += len(header["DATA"][:buff_size])
@@ -258,12 +260,13 @@ class SocketTCP:
                         print("Enviando mensaje: ", segment)
                         print("mensaje recivido hasta ahora: ", full_msg)
                         print("quedan por recibir: ", self.msg_left)
+                        self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny)
                         if len(full_msg) == buff_size:
                             if self.msg_left != 0:
                                 self.msg_buff = [header["DATA"][buff_size:]]
                                 print("guardando en buffer: ", self.msg_buff)
                             break 
-                        self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny)
+                        
                     
                         
                     else:
@@ -299,6 +302,10 @@ class SocketTCP:
                     tries -= 1
                     self.socket.settimeout(self.timeout)
                     self.socket.sendto(self.create_segment({"SYN":False, "ACK":False, "FIN":True, "SEQ":self.seq, "DATA":None}).encode(), self.address_destiny)
+                    if tries == 0:
+                        self.socket.close()
+                        print("conexion terminada por tiempo de espera acabado")
+                        return
 
             end_header = self.parse_segment(end_message.decode())
             if end_header["FIN"] and end_header["ACK"] and (end_header["SEQ"] == self.seq+1):
@@ -307,6 +314,9 @@ class SocketTCP:
                 self.socket.close()
                 print("conexion terminada con exito")
                 return
+        self.socket.close()
+        print("conexion terminada por tiempo de espera acabado")
+        return
 
     def recv_close(self):
         print("esperando cierre de conexion")
@@ -334,7 +344,10 @@ class SocketTCP:
                             tries -= 1
                             self.socket.settimeout(self.timeout)
                             self.socket.sendto(self.create_segment({"SYN":False, "ACK":True, "FIN":True, "SEQ":self.seq, "DATA":None}).encode(), addr)
-                            print("Reenviando finack")
+                            if tries == 0:
+                                self.socket.close()
+                                print("conexion terminada por tiempo de espera acabado")
+                                return
                     end_header = self.parse_segment(end_message.decode())
                     if end_header["ACK"] and end_header["SEQ"] == self.seq+1:
                         self.socket.close()
