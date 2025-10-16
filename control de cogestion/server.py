@@ -45,3 +45,4 @@ if __name__ == "__main__":
     else: print("Test 3: Failed")
     
     connection_socketTCP.recv_close()
+    server_socketTCP.close()
