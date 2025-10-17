@@ -230,9 +230,10 @@ class SocketTCP:
                         return b''
         print("quedan por recibir: ", self.msg_left)
         if self.msg_buff != []:
-            full_msg += self.msg_buff[0][:buff_size]
-            self.msg_left -= len(self.msg_buff[0][:buff_size])
-            self.seq += len(self.msg_buff[0][:buff_size])
+            current_msg_size = len(full_msg)
+            full_msg += self.msg_buff[0][:(buff_size - current_msg_size)]
+            self.msg_left -= len(self.msg_buff[0][:(buff_size - current_msg_size)])
+            self.seq += len(self.msg_buff[0][:(buff_size - current_msg_size)])
             segment["SEQ"] = self.seq
             print("Enviando mensaje: ", segment)
             print("mensaje recivido hasta ahora: ", full_msg)
@@ -240,7 +241,7 @@ class SocketTCP:
             self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny)
             if len(full_msg) == buff_size:
                 if self.msg_left != 0:
-                    self.msg_buff = [self.msg_buff[0][buff_size:]]
+                    self.msg_buff = [self.msg_buff[0][(buff_size - current_msg_size):]]
                 else:
                     self.msg_buff = []
                 return full_msg.encode()
@@ -253,9 +254,10 @@ class SocketTCP:
                 print("dato recibido: ", header)
                 if header["DATA"] is not None:
                     if header["SEQ"] + len(header["DATA"]) > self.seq and self.seq == header["SEQ"]:
-                        full_msg += header["DATA"][:buff_size]
-                        self.msg_left -= len(header["DATA"][:buff_size])
-                        self.seq += len(header["DATA"][:buff_size])
+                        current_msg_size = len(full_msg)
+                        full_msg += header["DATA"][:(buff_size - current_msg_size)]
+                        self.msg_left -= len(header["DATA"][:(buff_size - current_msg_size)])
+                        self.seq += len(header["DATA"][:(buff_size - current_msg_size)])
                         segment["SEQ"] = self.seq
                         print("Enviando mensaje: ", segment)
                         print("mensaje recivido hasta ahora: ", full_msg)
@@ -263,7 +265,7 @@ class SocketTCP:
                         self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny)
                         if len(full_msg) == buff_size:
                             if self.msg_left != 0:
-                                self.msg_buff = [header["DATA"][buff_size:]]
+                                self.msg_buff = [header["DATA"][(buff_size - current_msg_size):]]
                                 print("guardando en buffer: ", self.msg_buff)
                             break 
                         
