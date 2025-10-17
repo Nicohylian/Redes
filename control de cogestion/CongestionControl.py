@@ -4,7 +4,7 @@ from socketUDP import SocketUDP
 class CongestionControl:
     def __init__(self, MSS: int):
         self.current_state = "Slow Start"
-        self.MSS = MSS
+        self.MSS: bytes = MSS
         self.cwnd: bytes = MSS
         self.ssthresh: int = None
         self.ack_repeated = -1

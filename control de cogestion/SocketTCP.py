@@ -1,4 +1,5 @@
 from socketUDP import SocketUDP 
+import CongestionControl as cc
 import random
 import slidingWindowCC as sw
 import time
@@ -11,11 +12,9 @@ class SocketTCP:
         self.address_destiny=None
         self.timeout=5.0
         self.seq:int =0
-        self.new_msg = True
         self.msg_buff = []
         self.msg_left=0
-        self.panic_button = 10
-        self.window_size = 4
+        
         
     # recibe un string de estructura: SYN|||ACK|||FIN|||SEQ|||DATA
     @staticmethod
@@ -57,7 +56,8 @@ class SocketTCP:
             
 
         return segment
-        
+    
+
         
     def bind(self, address):
         self.socket.bind(address)
@@ -208,21 +208,23 @@ class SocketTCP:
         print("mensaje enviado")
 
     def send_using_go_back_n(self, message):
+        congestion_controler: CongestionControl = cc.CongestionControl(8)
         length = str(len(message)).encode()
         initial_seq = self.seq
-        buff_size = 16
         msg = []
+        window_size = congestion_controler.get_MSS_in_cwnd()
 
-        for i in range(0, len(message), buff_size):
-            msg.append(message[i:i+buff_size])
+        for i in range(0, len(message), congestion_controler.MSS):
+            msg.append(message[i:i+congestion_controler.MSS])
 
-        data_to_send = sw.SlidingWindowCC(self.window_size, [length]+msg, initial_seq)
-        print(data_to_send)
+        data_to_send = sw.SlidingWindowCC(congestion_controler.get_MSS_in_cwnd(), [length]+msg, initial_seq)
+        if self.debug: print(data_to_send)
+        if self.debug: print("tamaño de ventana: ", data_to_send.window_size)
         current_data = []
         current_seq = []
         segments = []
         self.socket.settimeout(self.timeout)
-        current_size = min(self.window_size, len([length]+msg))
+        current_size = min(congestion_controler.get_MSS_in_cwnd(), len([length]+msg))
         for i in range(current_size):
             data= data_to_send.get_data((i))
             if data is not None:
@@ -231,7 +233,7 @@ class SocketTCP:
                 segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ":current_seq[i],"DATA":current_data[i].decode()})
                 self.socket.sendto(self.create_segment(segments[i]).encode(), self.address_destiny, timer_index=0)
                 if self.debug: print("Enviando mensaje: ", segments[i])
-        if self.debug: print("Mensajes listos: ",segments)    
+          
             
             
         
@@ -247,17 +249,100 @@ class SocketTCP:
                     if self.debug: print("Enviando mensaje: ", ack_response)
                 else:
                     for segment in segments:
-                        if response["ACK"] and response["SEQ"] == (segment["SEQ"] + len(segment["DATA"])):
-                            
+                        if response["ACK"] and response["SEQ"] == (segment["SEQ"] + len(segment["DATA"])) and ind is None:
+                            congestion_controler.event_ack_received()
+                            if congestion_controler.is_state_slow_start():
+                                window_size = congestion_controler.get_MSS_in_cwnd()
+                                data_to_send.update_window_size(congestion_controler.get_MSS_in_cwnd())
+                                if self.debug: print(data_to_send)
+                                new_data = data_to_send.get_data(congestion_controler.get_MSS_in_cwnd()-1)
+                                if new_data is not None:
+                                    current_data.append(new_data)
+                                    new_seq = data_to_send.get_sequence_number(congestion_controler.get_MSS_in_cwnd()-1)
+                                    current_seq.append(new_seq)
+                                    segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()})
+                                    self.socket.sendto(self.create_segment({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()}).encode(), self.address_destiny, timer_index=0)
+
+                            elif congestion_controler.is_state_congestion_avoidance:
+                                if window_size != congestion_controler.get_MSS_in_cwnd():
+                                    window_size = congestion_controler.get_MSS_in_cwnd()
+                                    data_to_send.update_window_size(congestion_controler.get_MSS_in_cwnd())
+                                    if self.debug: print(data_to_send)
+                                    new_data = data_to_send.get_data(congestion_controler.get_MSS_in_cwnd()-1)
+                                    if new_data is not None:
+                                        current_data.append(new_data)
+                                        new_seq = data_to_send.get_sequence_number(congestion_controler.get_MSS_in_cwnd()-1)
+                                        current_seq.append(new_seq)
+                                        segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()})
+                                        self.socket.sendto(self.create_segment({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()}).encode(), self.address_destiny, timer_index=0)
                             print("confirmacion recibida")
                             ind = segments.index(segment)
                             data_to_send.move_window(ind+1)
+                            if self.debug: print(data_to_send)
                             i = 0
                             while i <= ind:
                                 current_data.pop(0)
                                 current_seq.pop(0)
                                 i+=1
-                            for j in range(self.window_size-(ind+1), self.window_size):
+                            for j in range(congestion_controler.get_MSS_in_cwnd()-(ind+1), congestion_controler.get_MSS_in_cwnd()):
+                                data = data_to_send.get_data(j)
+                                if data is not None: 
+                                    current_data.append(data)
+                                    seq = data_to_send.get_sequence_number(j)
+                                    current_seq.append(seq)
+                                    segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ": seq, "DATA": data.decode()})
+                            self.seq = (segment["SEQ"] + len(segment["DATA"]))
+                            break
+                    while (segments[-1]["SEQ"] + len(segments[-1]["DATA"])) < response["SEQ"] and response["ACK"] and ind is None:
+                        data_to_send.move_window(window_size)
+                        if self.debug: print(data_to_send)
+                        current_data.clear()
+                        current_seq.clear()
+                        segments.clear()
+                        for i in range(window_size):
+                            data= data_to_send.get_data((i))
+                            if data is not None:
+                                current_data.append(data_to_send.get_data(i))
+                                current_seq.append(data_to_send.get_sequence_number(i))
+                                segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ":current_seq[i],"DATA":current_data[i].decode()})
+                                self.socket.sendto(self.create_segment(segments[i]).encode(), self.address_destiny, timer_index=0)
+                                if self.debug: print("Enviando mensaje: ", segments[i])
+                    for segment in segments:
+                        if response["ACK"] and response["SEQ"] == (segment["SEQ"] + len(segment["DATA"])) and ind is None:
+                            congestion_controler.event_ack_received()
+                            if congestion_controler.is_state_slow_start():
+                                window_size = congestion_controler.get_MSS_in_cwnd()
+                                data_to_send.update_window_size(congestion_controler.get_MSS_in_cwnd())
+                                if self.debug: print(data_to_send)
+                                new_data = data_to_send.get_data(congestion_controler.get_MSS_in_cwnd()-1)
+                                if new_data is not None:
+                                    current_data.append(new_data)
+                                    new_seq = data_to_send.get_sequence_number(congestion_controler.get_MSS_in_cwnd()-1)
+                                    current_seq.append(new_seq)
+                                    segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()})
+                                    self.socket.sendto(self.create_segment({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()}).encode(), self.address_destiny, timer_index=0)
+                            elif congestion_controler.is_state_congestion_avoidance:
+                                if window_size != congestion_controler.get_MSS_in_cwnd():
+                                    window_size = congestion_controler.get_MSS_in_cwnd()
+                                    data_to_send.update_window_size(congestion_controler.get_MSS_in_cwnd())
+                                    if self.debug: print(data_to_send)
+                                    new_data = data_to_send.get_data(congestion_controler.get_MSS_in_cwnd()-1)
+                                    if new_data is not None:
+                                        current_data.append(new_data)
+                                        new_seq = data_to_send.get_sequence_number(congestion_controler.get_MSS_in_cwnd()-1)
+                                        current_seq.append(new_seq)
+                                        segments.append({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()})
+                                        self.socket.sendto(self.create_segment({"SYN":False, "ACK":False, "FIN":False, "SEQ":new_seq,"DATA":new_data.decode()}).encode(), self.address_destiny, timer_index=0)
+                            print("confirmacion recibida")
+                            ind = segments.index(segment)
+                            data_to_send.move_window(ind+1)
+                            if self.debug: print(data_to_send)
+                            i = 0
+                            while i <= ind:
+                                current_data.pop(0)
+                                current_seq.pop(0)
+                                i+=1
+                            for j in range(congestion_controler.get_MSS_in_cwnd()-(ind+1), congestion_controler.get_MSS_in_cwnd()):
                                 data = data_to_send.get_data(j)
                                 if data is not None: 
                                     current_data.append(data)
@@ -267,7 +352,17 @@ class SocketTCP:
                             self.seq = (segment["SEQ"] + len(segment["DATA"]))
                             
                             break
+
             except TimeoutError:
+                congestion_controler.event_timeout()
+                i = congestion_controler.get_MSS_in_cwnd()
+                while i != len(segments) and i < len(segments):
+                    current_data.pop(-1)
+                    current_seq.pop(-1)
+                    segments.pop(-1)
+                window_size = congestion_controler.get_MSS_in_cwnd()
+                data_to_send.update_window_size(congestion_controler.get_MSS_in_cwnd())
+                if self.debug: print(data_to_send)
                 for segment in segments:
                     self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
                     if self.debug: print("Enviando mensaje: ", segment)
@@ -281,7 +376,6 @@ class SocketTCP:
                 for i in range(ind+1, len(segments)):
                     self.socket.sendto(self.create_segment(segments[i]).encode(), self.address_destiny, timer_index=0)
                     if self.debug: print("Enviando mensaje: ", segments[i])
-                    
                     
                 ind = None
         print("mensaje enviado")
@@ -330,9 +424,10 @@ class SocketTCP:
         if self.debug: print("quedan por recibir: ", self.msg_left)
         print("Estado buffer: ", self.msg_buff)
         if self.msg_buff != []:
-            full_msg += self.msg_buff[0][:buff_size]
-            self.msg_left -= len(self.msg_buff[0][:buff_size])
-            self.seq += len(self.msg_buff[0][:buff_size])
+            current_msg_size = len(full_msg)
+            full_msg += self.msg_buff[0][:(buff_size - current_msg_size)]
+            self.msg_left -= len(self.msg_buff[0][:(buff_size - current_msg_size)])
+            self.seq += len(self.msg_buff[0][:(buff_size - current_msg_size)])
             segment["SEQ"] = self.seq
             if self.debug: print("Enviando mensaje: ", segment)
             if self.debug: print("mensaje recivido hasta ahora: ", full_msg)
@@ -340,7 +435,7 @@ class SocketTCP:
             self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
             if len(full_msg) == buff_size:
                 if self.msg_left != 0:
-                    self.msg_buff = [self.msg_buff[0][buff_size:]]
+                    self.msg_buff = [self.msg_buff[0][(buff_size - current_msg_size):]]
                 else:
                     self.msg_buff = []
                 return full_msg.encode()
@@ -352,9 +447,10 @@ class SocketTCP:
                 
                 if header["DATA"] is not None:
                     if header["SEQ"] + len(header["DATA"]) > self.seq and self.seq == header["SEQ"]:
-                        full_msg += header["DATA"][:buff_size]
-                        self.msg_left -= len(header["DATA"][:buff_size])
-                        self.seq += len(header["DATA"][:buff_size])
+                        current_msg_size = len(full_msg)
+                        full_msg += header["DATA"][:(buff_size - current_msg_size)]
+                        self.msg_left -= len(header["DATA"][:(buff_size - current_msg_size)])
+                        self.seq += len(header["DATA"][:(buff_size - current_msg_size)])
                         segment["SEQ"] = self.seq
                         if self.debug: print("mensaje recivido hasta ahora: ", full_msg)
                         if self.debug: print("quedan por recibir: ", self.msg_left)
@@ -362,7 +458,7 @@ class SocketTCP:
                         if self.debug: print("Enviando mensaje: ", segment)
                         if len(full_msg) == buff_size:
                             if self.msg_left != 0:
-                                self.msg_buff = [header["DATA"][buff_size:]]
+                                self.msg_buff = [header["DATA"][(buff_size - current_msg_size):]]
                                 if self.debug: print("guardando en buffer: ", self.msg_buff)
                             break 
                         
@@ -395,14 +491,16 @@ class SocketTCP:
                 try:
                     msg, _ = self.socket.recvfrom(23+buff_size)
                     header = self.parse_segment(msg.decode())
+                    if self.debug: print("Mensaje recibido: ", header)
                     if header["DATA"] is not None:
                         if header["SEQ"] + len(header["DATA"]) > self.seq and self.seq == header["SEQ"]:
                             self.msg_left = int(header["DATA"])
+                            print("largo del mensaje recibido: ", self.msg_left)
                             self.seq += len(header["DATA"])
                             segment["SEQ"] = self.seq
                             self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
                             if self.debug: print("Enviando mensaje: ", segment)
-                            print("largo del mensaje recibido: ", self.msg_left)
+                            
                             break
                         else:
                             self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
@@ -412,19 +510,18 @@ class SocketTCP:
                 except TimeoutError:
                     self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
                     if self.debug: print("Enviando mensaje: ", segment)
-        if self.debug: print("quedan por recibir: ", self.msg_left)
+        
         if self.msg_buff != []:
-            full_msg += self.msg_buff[0][:buff_size]
-            self.msg_left -= len(self.msg_buff[0][:buff_size])
-            self.seq += len(self.msg_buff[0][:buff_size])
+            current_msg_size = len(full_msg)
+            full_msg += self.msg_buff[0][:(buff_size - current_msg_size)]
+            self.msg_left -= len(self.msg_buff[0][:(buff_size - current_msg_size)])
+            self.seq += len(self.msg_buff[0][:(buff_size - current_msg_size)])
             segment["SEQ"] = self.seq
             if self.debug: print("Enviando mensaje: ", segment)
-            if self.debug: print("mensaje recivido hasta ahora: ", full_msg)
-            if self.debug: print("quedan por recibir: ", self.msg_left)
             self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
             if len(full_msg) == buff_size:
                 if self.msg_left != 0:
-                    self.msg_buff = [self.msg_buff[0][buff_size:]]
+                    self.msg_buff = [self.msg_buff[0][(buff_size - current_msg_size):]]
                 else:
                     self.msg_buff = []
                 return full_msg.encode()
@@ -434,26 +531,21 @@ class SocketTCP:
             try:
                 msg, _ = self.socket.recvfrom(23+self.msg_left)
                 header = self.parse_segment(msg.decode())
-                
+                if self.debug: print("Mensaje recibido: ", header)
                 if header["DATA"] is not None:
                     if header["SEQ"] + len(header["DATA"]) > self.seq and self.seq == header["SEQ"]:
-                        full_msg += header["DATA"][:buff_size]
-                        self.msg_left -= len(header["DATA"][:buff_size])
-                        self.seq += len(header["DATA"][:buff_size])
+                        current_msg_size = len(full_msg)
+                        full_msg += header["DATA"][:(buff_size - current_msg_size)]
+                        self.msg_left -= len(header["DATA"][:(buff_size - current_msg_size)])
+                        self.seq += len(header["DATA"][:(buff_size - current_msg_size)])
                         segment["SEQ"] = self.seq
                         if self.debug: print("Enviando mensaje: ", segment)
-                        if self.debug: print("mensaje recivido hasta ahora: ", full_msg)
-                        if self.debug: print("quedan por recibir: ", self.msg_left)
                         self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
-                        if self.debug: print("Enviando mensaje: ", segment)
                         if len(full_msg) == buff_size:
                             if self.msg_left != 0:
-                                self.msg_buff = [header["DATA"][buff_size:]]
+                                self.msg_buff = [header["DATA"][(buff_size - current_msg_size):]]
                                 if self.debug: print("guardando en buffer: ", self.msg_buff)
-                            break 
-                        
-                    
-                        
+                            break           
                     else:
                         
                         self.socket.sendto(self.create_segment(segment).encode(), self.address_destiny, timer_index=0)
