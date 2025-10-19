@@ -18,7 +18,6 @@ if __name__ == "__main__":
      
         
     server_socketTCP = SocketTCP()
-    server_socketTCP.debug = True
     server_socketTCP.bind(address)
     connection_socketTCP, new_address = server_socketTCP.accept()
 
@@ -43,6 +42,15 @@ if __name__ == "__main__":
     print("Test 3 received:", message_part_1.decode() + message_part_2.decode())
     if (message_part_1 + message_part_2) == "Mensaje de largo 19".encode(): print("Test 3: Passed")
     else: print("Test 3: Failed")
+    
+    first = True
+    message = b""
+    while first or connection_socketTCP.msg_left != 0:
+        parrafo = connection_socketTCP.recv(buff_size, "go_back_n")
+        message += parrafo
+        first = False
+
+    print(message.decode())
     
     connection_socketTCP.recv_close()
     server_socketTCP.close()

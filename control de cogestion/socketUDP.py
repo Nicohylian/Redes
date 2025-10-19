@@ -102,13 +102,14 @@ class SocketUDP:
         # checkea que el índice del timer sea válido y si lo es crea el Timer
         if timer_index not in range(len(self.timer_list)):
             raise IndexError("Indice timer_index fuera de rango.")
-        elif self.timeout > 0:
+        elif self.timeout > 0 and self.timer_list[timer_index] is None:
+            # lo creamos solo si no existe y hay un tiempo de timeot seteado
             self.timer_list[timer_index] = Timer(self.timeout, self._time_up_function, args=(timer_index,))
 
         # envía el mensaje contenido en data
         self.socket_udp.sendto(data, address)
-        if self.timeout > 0:
-            # echa a correr el timer recién creado
+        if self.timeout > 0 and not self.timer_list[timer_index].is_alive():
+            # echa a correr el timer recién creado solo si es que no se encontraba corriendo
             self.timer_list[timer_index].start()
 
     def _time_up_function(self, timer_index: int) -> None:

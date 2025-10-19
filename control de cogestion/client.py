@@ -1,9 +1,15 @@
 from SocketTCP import SocketTCP
+import sys
+
+def main(argv):
+    if(len(argv)==3):
+        return (argv[1], int(argv[2]))
 
 if __name__ == "__main__":
+    
 
     buff_size = 16
-    address = ('localhost', 8000)
+    address = main(sys.argv)
 
     """client_socket: SocketTCP = SocketTCP()
     client_socket.connect(address)
@@ -17,7 +23,6 @@ if __name__ == "__main__":
             client_socket.socket.sendto(chunk.encode(), client_socket.address_destiny)
             """
     client_socketTCP = SocketTCP()
-    client_socketTCP.debug = True
     client_socketTCP.connect(address)
     # test 1
     message = "Mensje de len=10".encode()
@@ -28,5 +33,15 @@ if __name__ == "__main__":
     # test 3
     message = "Mensaje de largo 19".encode()
     client_socketTCP.send(message, "go_back_n")
+
+    text = ""
+    while True:
+        try:
+            parrafo = input()
+            text += parrafo
+        except:
+            break
+
+    client_socketTCP.send(text.encode(), "go_back_n")
 
     client_socketTCP.close()
