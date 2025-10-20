@@ -1,5 +1,6 @@
 from SocketTCP import SocketTCP
 import sys
+import time
 
 def main(argv):
     if(len(argv)==3):
@@ -23,16 +24,10 @@ if __name__ == "__main__":
             client_socket.socket.sendto(chunk.encode(), client_socket.address_destiny)
             """
     client_socketTCP = SocketTCP()
+    client_socketTCP.debug = False
+    client_socketTCP.lost = True
     client_socketTCP.connect(address)
-    # test 1
-    message = "Mensje de len=10".encode()
-    client_socketTCP.send(message, "go_back_n")
-    # test 2
-    message = "Mensaje de largo 19".encode()
-    client_socketTCP.send(message, "go_back_n")
-    # test 3
-    message = "Mensaje de largo 19".encode()
-    client_socketTCP.send(message, "go_back_n")
+    
 
     text = ""
     while True:
@@ -41,7 +36,28 @@ if __name__ == "__main__":
             text += parrafo
         except:
             break
+    
+    print("Con control de congestion")
+    i = 5
+    while i > 0:
+        client_socketTCP.number_of_sent_segment = 0
+        start = time.perf_counter()
+        client_socketTCP.send(text.encode(), "go_back_n")
+        end = time.perf_counter()
+        print("Tiempo demorado en enviar el archivo: ", (end - start), " segundos\nNumero de segmentos enviados: ", client_socketTCP.number_of_sent_segment)
+        i -=1
+    
+    print("Sin control de congestion")
+    i = 5
+    while i > 0:
+        client_socketTCP.number_of_sent_segment = 0
+        start = time.perf_counter()
+        client_socketTCP.send(text.encode(), "go_back_n_without_control")
+        end = time.perf_counter()
+        print("Tiempo demorado en enviar el archivo: ", (end - start), " segundos\nNumero de segmentos enviados: ", client_socketTCP.number_of_sent_segment)
+        i -=1
 
-    client_socketTCP.send(text.encode(), "go_back_n")
 
     client_socketTCP.close()
+
+    

@@ -1,8 +1,14 @@
 from SocketTCP import SocketTCP
+import sys
+import time
+
+def main(argv):
+    if(len(argv)==3):
+        return (argv[1], int(argv[2]))
 
 if __name__ == "__main__":
     buff_size = 32
-    address = ('localhost', 8000)
+    address = main(sys.argv)
 
     """server_socket = SocketTCP()
 
@@ -18,39 +24,42 @@ if __name__ == "__main__":
      
         
     server_socketTCP = SocketTCP()
+    
     server_socketTCP.bind(address)
     connection_socketTCP, new_address = server_socketTCP.accept()
+    connection_socketTCP.lost= True
 
-    # test 1
-    buff_size = 16
-    full_message = connection_socketTCP.recv(buff_size, "go_back_n")
-    print("Test 1 received:", full_message.decode())
-    if full_message == "Mensje de len=10".encode(): print("Test 1: Passed")
-    else: print("Test 1: Failed")
-
-    # test 2
-    buff_size = 19
-    full_message = connection_socketTCP.recv(buff_size, "go_back_n")
-    print("Test 2 received:", full_message.decode())
-    if full_message == "Mensaje de largo 19".encode(): print("Test 2: Passed")
-    else: print("Test 2: Failed")
-
-    # test 3
-    buff_size = 14
-    message_part_1 = connection_socketTCP.recv(buff_size, "go_back_n")
-    message_part_2 = connection_socketTCP.recv(buff_size, "go_back_n")
-    print("Test 3 received:", message_part_1.decode() + message_part_2.decode())
-    if (message_part_1 + message_part_2) == "Mensaje de largo 19".encode(): print("Test 3: Passed")
-    else: print("Test 3: Failed")
+    print("Con control de congestion")
+    i = 5
+    while i > 0:
+        connection_socketTCP.number_of_sent_segment = 0
+        first = True
+        message = b""
+        start = time.perf_counter()
+        while first or connection_socketTCP.msg_left != 0:
+            parrafo = connection_socketTCP.recv(buff_size, "go_back_n")
+            message += parrafo
+            first = False
+        end = time.perf_counter()
+        print("Tiempo demorado en enviar el archivo: ", (end - start), " segundos\nNumero de segmentos enviados: ", connection_socketTCP.number_of_sent_segment)
+        i -= 1
     
-    first = True
-    message = b""
-    while first or connection_socketTCP.msg_left != 0:
-        parrafo = connection_socketTCP.recv(buff_size, "go_back_n")
-        message += parrafo
-        first = False
-
-    print(message.decode())
+    print("Sin control de congestion")
+    i = 5
+    while i > 0:
+        connection_socketTCP.number_of_sent_segment = 0
+        first = True
+        message = b""
+        start = time.perf_counter()
+        while first or connection_socketTCP.msg_left != 0:
+            parrafo = connection_socketTCP.recv(buff_size, "go_back_n")
+            message += parrafo
+            first = False
+        end = time.perf_counter()
+        print("Tiempo demorado en enviar el archivo: ", (end - start), " segundos\nNumero de segmentos enviados: ", connection_socketTCP.number_of_sent_segment)
+        i -= 1
     
     connection_socketTCP.recv_close()
     server_socketTCP.close()
+
+    
