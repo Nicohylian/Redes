@@ -27,7 +27,7 @@ if __name__ == "__main__":
     
     server_socketTCP.bind(address)
     connection_socketTCP, new_address = server_socketTCP.accept()
-    connection_socketTCP.lost= True
+    connection_socketTCP.lost= False
 
     print("Con control de congestion")
     i = 5
