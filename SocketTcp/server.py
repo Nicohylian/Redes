@@ -1,4 +1,4 @@
-from SocketTCP import SocketTCP
+from SocketTcp.SocketTCP import SocketTCP
 
 if __name__ == "__main__":
     buff_size = 16

@@ -1,4 +1,4 @@
-from SocketTCP import SocketTCP
+from SocketTcp.SocketTCP import SocketTCP
 import sys
 
 def main(argv):
