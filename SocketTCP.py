@@ -64,31 +64,30 @@ class SocketTCP:
         self.seq = random.randint(0,101)
         syn_segment = self.create_segment({"SYN":True, "ACK":False, "FIN":False, "SEQ":self.seq, "DATA":None})   
         self.socket.sendto(syn_segment.encode(), address)
-        print("Enviando mensaje: ", syn_segment)
         while True:
             while True:
                 try:
-                    message, new_address = self.socket.recvfrom(23)
+                    message, new_address = self.socket.recvfrom(32)
                     break
-                except socket.timeout:
+                except:
                     self.socket.sendto(syn_segment.encode(), address)
-                    print("Reenviando mensaje: ", syn_segment)
-                    
             header = self.parse_segment(message.decode())
-            
-            if (header["SYN"] and header["ACK"] and header["SEQ"]==self.seq +1):
+            if (header["SYN"] and header["ACK"] and header["SEQ"]==self.seq+1):
                 self.seq +=2
                 self.address_destiny = new_address
-                print("Direccion del servidor: ", self.address_destiny)
                 ack_segment = self.create_segment({"SYN":False, "ACK":True, "FIN":False, "SEQ":self.seq, "DATA":None})
                 self.socket.sendto(ack_segment.encode(), self.address_destiny)
-                print("Enviando mensaje: ", ack_segment)
                 break
             else:
                 self.socket.sendto(syn_segment.encode(), address)
-                print("Reenviando mensaje: ", syn_segment)
-
-        print("secuencia: ", self.seq)
+        while time_to_wait > 0:
+            print("aqui")
+            try:
+                msg, _ = self.socket.recvfrom(32)
+                self.socket.sendto(ack_segment.encode(), self.address_destiny)
+            except:
+                time_to_wait -= 1
+            
         print("Conexion establecida con exito")
         return
 
