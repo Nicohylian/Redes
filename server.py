@@ -1,23 +1,13 @@
 from SocketTCP import SocketTCP
 
 if __name__ == "__main__":
-    buff_size = 32
+    buff_size = 16
     address = ('localhost', 8000)
 
-    """server_socket = SocketTCP()
-
-    server_socket.bind(address)
-    connection_socket, new_address = server_socket.accept()
-
-
-    
-    while True:
-        data, addres_data = connection_socket.socket.recvfrom(buff_size)
-        message = server_socket.parse_segment(data.decode())
-        print(message['DATA']) """
      
         
     server_socketTCP = SocketTCP()
+    server_socketTCP.debug = False
     server_socketTCP.bind(address)
     connection_socketTCP, new_address = server_socketTCP.accept()
 
@@ -42,5 +32,15 @@ if __name__ == "__main__":
     print("Test 3 received:", message_part_1.decode() + message_part_2.decode())
     if (message_part_1 + message_part_2) == "Mensaje de largo 19".encode(): print("Test 3: Passed")
     else: print("Test 3: Failed")
+
+    first = True
+    message = b""
+    
+    while first or connection_socketTCP.msg_left != 0:
+        parrafo = connection_socketTCP.recv(buff_size)
+        message += parrafo
+        first = False
+    
+    print(message.decode())
     
     connection_socketTCP.recv_close()

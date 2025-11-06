@@ -25,7 +25,7 @@ if __name__ == "__main__":
             """
     client_socketTCP = SocketTCP()
     client_socketTCP.debug = False
-    client_socketTCP.lost = True
+    client_socketTCP.lost = False
     client_socketTCP.connect(address)
     
 
