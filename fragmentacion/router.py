@@ -110,7 +110,6 @@ def fragment_IP_packet(IP_packet, mtu):
         offset = parsed_packet["offset"]
         id = parsed_packet["ID"]
         while len(data) > 0:
-            print(data)
             fragment_data = data[:max_data_size]
             data = data[max_data_size:]
             parsed_fragment = parse_packet(IP_packet)
